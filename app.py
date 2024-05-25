@@ -2,6 +2,7 @@ from flask import Flask, render_template, request
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 from Crypto.Random import get_random_bytes
+import string
 
 app = Flask(__name__)
 
@@ -28,20 +29,21 @@ def caesar_encrypt(text, key):
 def caesar_decrypt(text, key):
     return caesar_encrypt(text, -key)
 
-def aes_encrypt(plaintext, key):
-    if len(key) not in [16, 24, 32]:
-        raise ValueError("Key must be 16, 24, or 32 bytes long")
-    else:
-        cipher = AES.new(key, AES.MODE_CBC)
-        ciphertext = cipher.iv + cipher.encrypt(pad(plaintext.encode('utf-8'), AES.block_size))
-    return ciphertext.hex()
+def aes_encrypt(plaintext):
+    key = get_random_bytes(16)  # Generate a random key
+    cipher = AES.new(key, AES.MODE_CBC)
+    ciphertext = cipher.iv + cipher.encrypt(pad(plaintext.encode('utf-8'), AES.block_size))
+    return key.hex() + ciphertext.hex()  # Concatenate key and ciphertext
 
-def aes_decrypt(ciphertext, key):
-    if len(key) not in [16, 24, 32]:
-        raise ValueError("Key must be 16, 24, or 32 bytes long")
-    key = key.encode('utf-8')  # Convert key to bytes
-    iv = bytes.fromhex(ciphertext[:32])  # Extract IV from the first 32 characters (IV size for AES)
-    ciphertext = bytes.fromhex(ciphertext[32:])  # Extract ciphertext from characters after IV
+def aes_decrypt(ciphertext_with_key):
+    key_hex = ciphertext_with_key[:32]  # Extract key part
+    ciphertext_hex = ciphertext_with_key[32:]  # Extract ciphertext part
+    
+    key = bytes.fromhex(key_hex)  # Convert hex key to bytes
+    ciphertext = bytes.fromhex(ciphertext_hex)  # Convert hex ciphertext to bytes
+    
+    iv = ciphertext[:16]  # Extract IV from the first 16 bytes (IV size for AES)
+    ciphertext = ciphertext[16:]  # Extract ciphertext from bytes after IV
     cipher = AES.new(key, AES.MODE_CBC, iv)
     decrypted_data = unpad(cipher.decrypt(ciphertext), AES.block_size)
     return decrypted_data.decode('utf-8')
@@ -104,6 +106,99 @@ def transposition_decrypt(cipher_text, key):
     
     return plain_text
 
+def vigenere_encrypt(plaintext, key):
+    cipher = ""
+    index = 0
+    for char in plaintext:
+        if char in string.ascii_lowercase:
+            offset = ord(key[index % len(key)].lower()) - ord('a')
+            encrypted = chr((ord(char) - ord('a') + offset) % 26 + ord('a'))
+            cipher += encrypted
+            index += 1
+        elif char in string.ascii_uppercase:
+            offset = ord(key[index % len(key)].lower()) - ord('a')
+            encrypted = chr((ord(char) - ord('A') + offset) % 26 + ord('A'))
+            cipher += encrypted
+            index += 1
+        else:
+            cipher += char
+    return cipher
+def vigenere_decrypt(ciphertext, key):
+    plaintext = ""
+    index = 0
+    for char in ciphertext:
+        if char in string.ascii_lowercase:
+            offset = ord(key[index % len(key)].lower()) - ord('a')
+            decrypted = chr((ord(char) - ord('a') - offset + 26) % 26 + ord('a'))
+            plaintext += decrypted
+            index += 1
+        elif char in string.ascii_uppercase:
+            offset = ord(key[index % len(key)].lower()) - ord('a')
+            decrypted = chr((ord(char) - ord('A') - offset + 26) % 26 + ord('A'))
+            plaintext += decrypted
+            index += 1
+        else:
+            plaintext += char
+    return plaintext
+def polyalphabetic_encrypt(plain_text, shifts_input):
+    encrypted_text = ""
+    shifts = list(map(int, shifts_input.split()))
+    for i, char in enumerate(plain_text):
+        if char.isalpha():
+            shift = shifts[i % len(shifts)]
+            base = ord('A') if char.isupper() else ord('a')
+            encrypted_char = chr(((ord(char) - base + shift) % 26) + base)
+            encrypted_text += encrypted_char
+        else:
+            encrypted_text += char
+    return encrypted_text
+def polyalphabetic_decrypt(encrypted_text, shifts):
+    decrypted_text = ""
+    shifts = list(map(int, shifts.split()))
+    for i, char in enumerate(encrypted_text):
+        if char.isalpha():
+            shift = shifts[i % len(shifts)]
+            base = ord('A') if char.isupper() else ord('a')
+            decrypted_char = chr((ord(char) - base - shift) % 26 + base)
+            decrypted_text += decrypted_char
+        else:
+            decrypted_text += char
+    return decrypted_text
+def monoalphabetic_encrypt(plain_text, key):
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    key = key.strip().upper()
+    key_map = {alphabet[i]: key[i] for i in range(26)}
+    plain_text = plain_text.strip()
+    
+    encrypted_text = ""
+    for char in plain_text:
+        if char.isalpha():
+            if char.isupper():
+                encrypted_text += key_map[char]
+            else:
+                encrypted_text += key_map[char.upper()].lower()
+        else:
+            encrypted_text += char
+    return encrypted_text
+
+def monoalphabetic_decrypt(encrypted_text, key):
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    key = key.strip().upper()
+    encrypted_text = encrypted_text.strip()
+    reverse_key_map = {key[i]: alphabet[i] for i in range(26)}
+    
+    decrypted_text = ""
+    for char in encrypted_text:
+        if char.isalpha():
+            if char.isupper():
+                decrypted_text += reverse_key_map[char]
+            else:
+                decrypted_text += reverse_key_map[char.upper()].lower()
+        else:
+            decrypted_text += char
+    return decrypted_text
+
+
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -154,10 +249,10 @@ def home():
                 result = des_decrypt(text, key)
         elif cipher == 'aes':
             if 'encrypt' in request.form:
-                key = get_random_bytes(16)
-                result = aes_encrypt(text, key)
+                encrypted_text = aes_encrypt(text)
+                result = encrypted_text 
             elif 'decrypt' in request.form:
-                result = aes_decrypt(text, key)
+                result = aes_decrypt(text)
         else:
             result = "Invalid cipher selected"
         return render_template('index.html', result=result)
