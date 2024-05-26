@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request
-from Crypto.Cipher import AES
+from Crypto.Cipher import AES,DES
 from Crypto.Util.Padding import pad, unpad
 from Crypto.Random import get_random_bytes
 import string
@@ -30,28 +30,24 @@ def caesar_decrypt(text, key):
     return caesar_encrypt(text, -key)
 
 def aes_encrypt(plaintext):
-    key = get_random_bytes(16)  # Generate a random key
+    key = get_random_bytes(16) 
     cipher = AES.new(key, AES.MODE_CBC)
     ciphertext = cipher.iv + cipher.encrypt(pad(plaintext.encode('utf-8'), AES.block_size))
-    return key.hex() + ciphertext.hex()  # Concatenate key and ciphertext
+    return key.hex() + ciphertext.hex()
 
 def aes_decrypt(ciphertext_with_key):
-    key_hex = ciphertext_with_key[:32]  # Extract key part
-    ciphertext_hex = ciphertext_with_key[32:]  # Extract ciphertext part
-    
-    key = bytes.fromhex(key_hex)  # Convert hex key to bytes
-    ciphertext = bytes.fromhex(ciphertext_hex)  # Convert hex ciphertext to bytes
-    
-    iv = ciphertext[:16]  # Extract IV from the first 16 bytes (IV size for AES)
-    ciphertext = ciphertext[16:]  # Extract ciphertext from bytes after IV
+    key_hex = ciphertext_with_key[:32]  
+    ciphertext_hex = ciphertext_with_key[32:] 
+    key = bytes.fromhex(key_hex)  
+    ciphertext = bytes.fromhex(ciphertext_hex)
+    iv = ciphertext[:16] 
+    ciphertext = ciphertext[16:]  
     cipher = AES.new(key, AES.MODE_CBC, iv)
     decrypted_data = unpad(cipher.decrypt(ciphertext), AES.block_size)
     return decrypted_data.decode('utf-8')
 def transposition_encrypt(message, key):
-    # Remove spaces from the message
+
     message = message.replace(" ", "")
-    
-    # Determine the number of columns and rows needed
     num_of_columns = len(key)
     num_of_rows = len(message) // num_of_columns
     if len(message) % num_of_columns != 0:
@@ -198,67 +194,179 @@ def monoalphabetic_decrypt(encrypted_text, key):
             decrypted_text += char
     return decrypted_text
 
+def des_encrypt(plaintext, key):
+    key = key.encode('utf-8')
+    cipher = DES.new(key, DES.MODE_ECB)
+    padded_plaintext = pad(plaintext.encode('utf-8'), DES.block_size)
+    ciphertext = cipher.encrypt(padded_plaintext)
+    return ciphertext
+
+def des_decrypt(ciphertext, key):
+    key = key.encode('utf-8')
+    cipher = DES.new(key, DES.MODE_ECB)
+    decrypted_data = cipher.decrypt(ciphertext)
+    plaintext = unpad(decrypted_data, DES.block_size)
+    return plaintext.decode('utf-8')
+
+def playfair_encrypt(plaintext, key):
+    return playfair_cipher(plaintext, key, 'encrypt')
+
+def playfair_decrypt(ciphertext, key):
+    return playfair_cipher(ciphertext, key, 'decrypt')
+
+def playfair_cipher(text, key, mode):
+    # Define the alphabet, excluding 'j'
+    alphabet = 'abcdefghiklmnopqrstuvwxyz'
+    
+    # Remove whitespace and 'j' from the key and convert to lowercase
+    key = key.lower().replace(' ', '').replace('j', 'i')
+    
+    # Construct the key square
+    key_square = ''
+    for letter in key + alphabet:
+        if letter not in key_square:
+            key_square += letter
+    
+    # Split the text into digraphs, padding with 'x' if necessary
+    text = text.lower().replace(' ', '').replace('j', 'i')
+    if len(text) % 2 == 1:
+        text += 'x'
+    digraphs = [text[i:i+2] for i in range(0, len(text), 2)]
+def rail_fence_encrypt(text, key):
+    key = int(key)
+    rail = [['\n' for _ in range(len(text))] for _ in range(key)]
+    dir_down = False
+    row, col = 0, 0
+
+    for char in text:
+        if row == 0 or row == key - 1:
+            dir_down = not dir_down
+        rail[row][col] = char
+        col += 1
+        row += 1 if dir_down else -1
+
+    encrypted_text = ''.join([''.join(row) for row in rail])
+    return encrypted_text.replace('\n', '')
+
+def rail_fence_decrypt(cipher, key):
+    key = int(key)
+    rail = [['\n' for _ in range(len(cipher))] for _ in range(key)]
+    dir_down = None
+    row, col = 0, 0
+
+    for i in range(len(cipher)):
+        if row == 0:
+            dir_down = True
+        if row == key - 1:
+            dir_down = False
+        rail[row][col] = '*'
+        col += 1
+        row += 1 if dir_down else -1
+
+    index = 0
+    for i in range(key):
+        for j in range(len(cipher)):
+            if rail[i][j] == '*' and index < len(cipher):
+                rail[i][j] = cipher[index]
+                index += 1
+
+    decrypted_text = []
+    row, col = 0, 0
+    for i in range(len(cipher)):
+        if row == 0:
+            dir_down = True
+        if row == key - 1:
+            dir_down = False
+        if rail[row][col] != '*':
+            decrypted_text.append(rail[row][col])
+            col += 1
+        row += 1 if dir_down else -1
+
+    return ''.join(decrypted_text)
+ 
+def is_valid_key(cipher, key):
+    if cipher in ["caesar", "transposition", "polyalphabetic"]:
+        return key.isdigit()
+    if cipher == "monoalphabetic":
+        return len(key) == 26 and key.isalpha()
+    return True
+
 
 
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
+    result = ''
     if request.method == 'POST':
         key = request.form['key']
         text = request.form['inputText']
         cipher = request.form['cipher']
-        if cipher == 'caesar':
-            if 'encrypt' in request.form:
-                result = caesar_encrypt(text, int(key))
-            elif 'decrypt' in request.form:
-                result = caesar_decrypt(text, int(key))
-        elif cipher == 'vigenere':
-            if 'encrypt' in request.form:
-                result = vigenere_encrypt(text, key)
-            elif 'decrypt' in request.form:
-                result = vigenere_decrypt(text, key)
-        elif cipher == 'transposition':
-            if 'encrypt' in request.form:
-                result = transposition_encrypt(text, key)
-            elif 'decrypt' in request.form:
-                result = transposition_decrypt(text, key)
-        elif cipher == 'rail-fence':
-            if 'encrypt' in request.form:
-                result = rail_fence_encrypt(text, key)
-            elif 'decrypt' in request.form:
-                result = rail_fence_decrypt(text, key)
-        elif cipher == 'playfair':
-            if 'encrypt' in request.form:
-                result = playfair_encrypt(text, key)
-            elif 'decrypt' in request.form:
-                result = playfair_decrypt(text, key)
-        elif cipher == 'monoalphabetic':
-            if 'encrypt' in request.form:
-                result = monoalphabetic_encrypt(text, key)
-            elif 'decrypt' in request.form:
-                result = monoalphabetic_decrypt(text, key)
-        elif cipher == 'polyalphabetic':
-            if 'encrypt' in request.form:
-                result = polyalphabetic_encrypt(text, key)
-            elif 'decrypt' in request.form:
-                result = polyalphabetic_decrypt(text, key)
-        elif cipher == 'des':
-            if 'encrypt' in request.form:
-                result = des_encrypt(text, key)
-            elif 'decrypt' in request.form:
-                result = des_decrypt(text, key)
-        elif cipher == 'aes':
-            if 'encrypt' in request.form:
-                encrypted_text = aes_encrypt(text)
-                result = encrypted_text 
-            elif 'decrypt' in request.form:
-                result = aes_decrypt(text)
+        
+        if not text:
+            result = "Please enter the input text."
+        elif not key:
+            result = "Please enter the key."
+        elif not is_valid_key(cipher, key):
+            if cipher in ["caesar", "transposition", "polyalphabetic"]:
+                result = f"The key for the {cipher} cipher must be a number."
+            elif cipher == "monoalphabetic":
+                result = "The key for the monoalphabetic cipher must be exactly 26 letters."
+            else:
+                result = "Invalid key format."
         else:
-            result = "Invalid cipher selected"
-        return render_template('index.html', result=result)
+            try:
+                if cipher == 'caesar':
+                    if 'encrypt' in request.form:
+                        result = caesar_encrypt(text, int(key))
+                    elif 'decrypt' in request.form:
+                        result = caesar_decrypt(text, int(key))
+                elif cipher == 'vigenere':
+                    if 'encrypt' in request.form:
+                        result = vigenere_encrypt(text, key)
+                    elif 'decrypt' in request.form:
+                        result = vigenere_decrypt(text, key)
+                elif cipher == 'transposition':
+                    if 'encrypt' in request.form:
+                        result = transposition_encrypt(text, key)
+                    elif 'decrypt' in request.form:
+                        result = transposition_decrypt(text, key)
+                elif cipher == 'railfence':
+                    if 'encrypt' in request.form:
+                        result = rail_fence_encrypt(text, key)
+                    elif 'decrypt' in request.form:
+                        result = rail_fence_decrypt(text, key)
+                elif cipher == 'playfair':
+                    if 'encrypt' in request.form:
+                        result = playfair_encrypt(text, key)
+                    elif 'decrypt' in request.form:
+                        result = playfair_decrypt(text, key)
+                elif cipher == 'monoalphabetic':
+                    if 'encrypt' in request.form:
+                        result = monoalphabetic_encrypt(text, key)
+                    elif 'decrypt' in request.form:
+                        result = monoalphabetic_decrypt(text, key)
+                elif cipher == 'polyalphabetic':
+                    if 'encrypt' in request.form:
+                        result = polyalphabetic_encrypt(text, key)
+                    elif 'decrypt' in request.form:
+                        result = polyalphabetic_decrypt(text, key)
+                elif cipher == 'des':
+                    if 'encrypt' in request.form:
+                        result = des_encrypt(text, key).hex()
+                    elif 'decrypt' in request.form:
+                        result = des_decrypt(bytes.fromhex(text), key)
+                elif cipher == 'aes':
+                    if 'encrypt' in request.form:
+                        encrypted_text = aes_encrypt(text)
+                        result = encrypted_text
+                    elif 'decrypt' in request.form:
+                        result = aes_decrypt(text)
+                else:
+                    result = "Invalid cipher selected"
+            except ValueError:
+                result = "Invalid key format. Please enter a valid key."
     
-
-    return render_template('index.html', result='')
+    return render_template('index.html', result=result)
 
 if __name__ == '__main__':
     app.run(debug=True)
