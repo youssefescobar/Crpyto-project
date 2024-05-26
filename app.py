@@ -1,7 +1,6 @@
 from flask import Flask, render_template, request
 from Crypto.Cipher import AES,DES
 from Crypto.Util.Padding import pad, unpad
-from Crypto.Random import get_random_bytes
 import string
 
 app = Flask(__name__)
@@ -215,11 +214,50 @@ def playfair_cipher(text, key, mode):
     for letter in key + alphabet:
         if letter not in key_square:
             key_square += letter
-            
+
+    # Creating the 5x5 matrix
+    matrix = [list(key_square[i:i+5]) for i in range(0, 25, 5)]
+    
     text = text.lower().replace(' ', '').replace('j', 'i')
     if len(text) % 2 == 1:
         text += 'x'
     digraphs = [text[i:i+2] for i in range(0, len(text), 2)]
+
+    def find_position(letter):
+        for row in range(5):
+            for col in range(5):
+                if matrix[row][col] == letter:
+                    return row, col
+        return None
+
+    def process_digraph(digraph, mode):
+        row1, col1 = find_position(digraph[0])
+        row2, col2 = find_position(digraph[1])
+
+        if row1 == row2:
+            if mode == 'encrypt':
+                col1 = (col1 + 1) % 5
+                col2 = (col2 + 1) % 5
+            else:  # decrypt
+                col1 = (col1 - 1) % 5
+                col2 = (col2 - 1) % 5
+        elif col1 == col2:
+            if mode == 'encrypt':
+                row1 = (row1 + 1) % 5
+                row2 = (row2 + 1) % 5
+            else:  # decrypt
+                row1 = (row1 - 1) % 5
+                row2 = (row2 - 1) % 5
+        else:
+            col1, col2 = col2, col1
+
+        return matrix[row1][col1] + matrix[row2][col2]
+
+    result = ''
+    for digraph in digraphs:
+        result += process_digraph(digraph, mode)
+
+    return result
 def rail_fence_encrypt(text, key):
     key = int(key)
     rail = [['\n' for _ in range(len(text))] for _ in range(key)]
