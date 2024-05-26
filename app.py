@@ -29,20 +29,19 @@ def caesar_encrypt(text, key):
 def caesar_decrypt(text, key):
     return caesar_encrypt(text, -key)
 
-def aes_encrypt(plaintext):
-    key = get_random_bytes(16) 
-    cipher = AES.new(key, AES.MODE_CBC)
-    ciphertext = cipher.iv + cipher.encrypt(pad(plaintext.encode('utf-8'), AES.block_size))
-    return key.hex() + ciphertext.hex()
+def aes_encrypt(plaintext, key):
+    key = key.encode('utf-8')
+    key = key[:16].ljust(16, b'\0')  # Ensure the key is 16 bytes long
+    cipher = AES.new(key, AES.MODE_ECB)
+    padded_plaintext = pad(plaintext.encode('utf-8'), AES.block_size)
+    ciphertext = cipher.encrypt(padded_plaintext)
+    return ciphertext.hex()
 
-def aes_decrypt(ciphertext_with_key):
-    key_hex = ciphertext_with_key[:32]  
-    ciphertext_hex = ciphertext_with_key[32:] 
-    key = bytes.fromhex(key_hex)  
-    ciphertext = bytes.fromhex(ciphertext_hex)
-    iv = ciphertext[:16] 
-    ciphertext = ciphertext[16:]  
-    cipher = AES.new(key, AES.MODE_CBC, iv)
+def aes_decrypt(ciphertext, key):
+    key = key.encode('utf-8')
+    key = key[:16].ljust(16, b'\0')  # Ensure the key is 16 bytes long
+    cipher = AES.new(key, AES.MODE_ECB)
+    ciphertext = bytes.fromhex(ciphertext)
     decrypted_data = unpad(cipher.decrypt(ciphertext), AES.block_size)
     return decrypted_data.decode('utf-8')
 def transposition_encrypt(message, key):
@@ -308,11 +307,11 @@ def home():
             result = "Please enter the key."
         elif not is_valid_key(cipher, key):
             if cipher in ["caesar", "transposition", "polyalphabetic"]:
-                result = f"The key for the {cipher} cipher must be a number."
+                result = f"The key for {cipher} must be a number."
             elif cipher == "monoalphabetic":
-                result = "The key for the monoalphabetic cipher must be exactly 26 letters."
+                result = "The key for monoalphabetic must be 26 letters."
             else:
-                result = "Invalid key format."
+                result = "Invalid key."
         else:
             try:
                 if cipher == 'caesar':
@@ -357,14 +356,13 @@ def home():
                         result = des_decrypt(bytes.fromhex(text), key)
                 elif cipher == 'aes':
                     if 'encrypt' in request.form:
-                        encrypted_text = aes_encrypt(text)
-                        result = encrypted_text
+                        result = aes_encrypt(text, key)
                     elif 'decrypt' in request.form:
-                        result = aes_decrypt(text)
+                        result = aes_decrypt(text, key)
                 else:
                     result = "Invalid cipher selected"
             except ValueError:
-                result = "Invalid key format. Please enter a valid key."
+                result = "Please enter a valid key."
     
     return render_template('index.html', result=result)
 
